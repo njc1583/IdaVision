@@ -2,6 +2,8 @@ import cv2
 import numpy as np 
 import ffmpeg
 
+from segmentation import slic_segment_image
+
 def load_video(filename, H=None, W=None):
     cap = cv2.VideoCapture(filename)
 
@@ -48,3 +50,15 @@ def vidwrite_from_numpy(fn, images, framerate=30, vcodec='libx264'):
         )
     process.stdin.close()
     process.wait()
+
+def preprocess_video(vid_frames, tqdm, n_segments=500, compactness=10):
+    F, H, W, C = vid_frames.shape 
+
+    labels = np.zeros((F, H, W), dtype=np.uint32)
+
+    for f in tqdm(range(F)):
+        l = slic_segment_image(vid_frames[f], n_segments, compactness)
+
+        labels[f] = l 
+
+    return labels
