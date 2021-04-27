@@ -1,6 +1,7 @@
 import numpy as np
 
 import cv2
+import maxflow
 
 from skimage.segmentation import slic
 from skimage.segmentation import mark_boundaries
@@ -11,6 +12,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import cv2
+
+from tqdm.notebook import tqdm
 
 
 def slic_segment_image(img, n_segments=500, compactness=10, mask=None):
@@ -98,7 +101,7 @@ def get_superpixel_masks(frame, labels, motion_labels):
 #     return background_pixels
 
 def calculate_background_priors(background_labels):
-    n_labels = background_labels.max()
+    n_labels = background_labels.max() + 1
 
     priors = []
     sizes = []
@@ -109,13 +112,15 @@ def calculate_background_priors(background_labels):
         priors.append(1 / c_x.shape[0])
         sizes.append(c_x.shape[0])
 
-    return np.array(sizes), np.array(priors)
+    priors = np.array(priors)
 
-def calculate_foreground_priors(foreground_labels, t_k, N_f, c):
+    return np.array(sizes), (priors/priors.sum())
+
+def calculate_foreground_priors(foreground_labels, t_k, N_f):
     if type(t_k) != type(np.array):
         t_k = np.array(t_k)
 
-    n_labels = foreground_labels.max()
+    n_labels = foreground_labels.max() + 1
 
     sizes = []
 
@@ -124,30 +129,128 @@ def calculate_foreground_priors(foreground_labels, t_k, N_f, c):
 
         sizes.append(c_x.shape[0])
 
-    priors = c / (t_k + N_f)
+    priors = 1 / (t_k + N_f)
 
-    return np.array(sizes), priors
+    return np.array(sizes), (priors/priors.sum())
 
 def calculate_unary_potential(frame, frame_superpixels, priors, models):
     # TODO: Background priors should be based on the previous frame
-    n_superpixels = frame_superpixels.max()
+    n_superpixels = frame_superpixels.max() + 1
 
-    unary_potential_vals = np.zeros(frame.shape[:2])
+    # unary_potential_vals = np.zeros(frame.shape[:2])
+    unary_potential_vals = np.zeros(n_superpixels)
 
     for s_idx in range(n_superpixels):
         c_x, c_y = np.where(frame_superpixels == s_idx)
 
         pix = frame[c_x,c_y,:]
 
-        log_likelihood = - np.log(priors) - np.array([model.score(pix) for model in models])
+        log_likelihood = np.log(priors) + np.array([
+            np.log(np.exp(model.score_samples(pix)).mean() + 1e-6) for model in models
+        ])
 
-        unary_potential_vals[c_x,c_y] = log_likelihood.min()
+        # unary_potential_vals[c_x,c_y] = log_likelihood.min()
+        unary_potential_vals[s_idx] = -1 * log_likelihood.max()
 
     return unary_potential_vals
 
+def graph_segmentation_to_object_mask(H, W, labels, grid_segments):
+    obj_mask = np.zeros((H, W))
+
+    g_x = np.where(grid_segments == True)
+    isin = np.isin(labels, g_x)
+
+    c_x, c_y = np.where(isin == True)
+
+    obj_mask[c_x, c_y] = 1
+
+    return obj_mask
+
+def calculate_adjacency_matrix(label_frame):
+    H, W = label_frame.shape
+
+    n_labels = label_frame.max() + 1
+
+    blank_img = np.zeros_like(label_frame)
+
+    white_lines = mark_boundaries(blank_img, label_frame, color=(1,1,1))[:,:,0]
+
+    c_x, c_y = np.where(white_lines == 1)
+
+    adjacency = np.zeros((n_labels, n_labels), dtype=np.bool)
+
+    aa = [(0,1),(0,-1),(1,0),(-1,0)]
+
+    for x,y in tqdm(zip(c_x,c_y)):
+        for xx,yy in aa:
+            i = x + xx
+            j = y + yy 
+
+            if i < 0 or j < 0 or i >= H or j >= W:
+                continue
+            
+            if label_frame[x,y] == label_frame[i,j]:
+                continue
+
+            label0 = label_frame[x,y]
+            label1 = label_frame[i,j]
+
+            if adjacency[label0,label1]:
+                continue
+
+            adjacency[label0, label1] = True
+
+    return adjacency
+
+def calculate_kl_divergence(P, Q, samples):
+    P_x = P.score_samples(samples)
+    Q_x = Q.score_samples(samples)
+
+    # print(np.exp(P_x), np.exp(Q_x))
+
+    KL = np.exp(P_x) * (P_x - Q_x)
+
+    return KL.sum()
+
+def calculate_local_similarity(model_tau, PHI, n_samples=100):
+    tau_samples = model_tau.sample(n_samples)[0]
+
+    kl_divergences = np.array([
+        calculate_kl_divergence(model_tau, phi, tau_samples) for phi in PHI
+        ])
+
+    # print(kl_divergences)
+
+    # return 1 - kl_divergences.min()
+    return kl_divergences.min()
+
+def create_adjacency_edges(frame, label_frame, graph, f_mogs, b_mogs, n_samples=100):    
+    PHI = f_mogs + b_mogs
+
+    adjacency = calculate_adjacency_matrix(label_frame)
+
+    c_x,c_y = np.where(adjacency == True)
+
+    adjacency_models = []
+
+    for label0,label1 in tqdm(zip(c_x,c_y)):
+        union_x, union_y = np.where((label_frame == label0) | (label_frame == label1))
+
+        union_pixels = frame[union_x, union_y, :]
+
+        model_tau = GaussianMixture(n_components=3, init_params='random').fit(union_pixels)
+
+        adjacency_models.append((label0,label1,model_tau))
+
+    for l0,l1,model_tau in tqdm(adjacency_models):
+        local_sim = calculate_local_similarity(model_tau, PHI, n_samples)
+
+        graph.add_edge(l0, l1, local_sim, local_sim)
+
+
 def generate_gaussians(frame, background_labels, foreground_labels, n_components=3):
-    n_background = background_labels.max()
-    n_foreground = foreground_labels.max()
+    n_background = background_labels.max() + 1
+    n_foreground = foreground_labels.max() + 1
 
     backgorund_mogs = []
     foreground_mogs = []
