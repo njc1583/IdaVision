@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from segmentation import *
+from VidFrame_utils import *
 
 
 def visualize_images(images, nrows, ncols):

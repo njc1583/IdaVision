@@ -16,7 +16,7 @@ import cv2
 from tqdm.notebook import tqdm
 
 
-def slic_segment_image(img, n_segments=500, compactness=10, mask=None):
+def slic_segment_image(img, n_segments=500, compactness=1, mask=None):
     H, W, C = img.shape
 
     img = img_as_float(img)
@@ -26,10 +26,8 @@ def slic_segment_image(img, n_segments=500, compactness=10, mask=None):
 
     return labels
 
-
 def get_boundary_segments(img, labels):
     return img_as_ubyte(mark_boundaries(img, labels))
-
 
 def get_jaccard_distance(labels0, labels1, target_label1):
     """
@@ -43,7 +41,7 @@ def get_jaccard_distance(labels0, labels1, target_label1):
 
     labels0_overlap = np.unique(pix0_overlap)
 
-    jaccard_d = np.ones(labels0_overlap.shape[0], dtype=np.float32)
+    jaccard_d = np.zeros(labels0_overlap.shape[0], dtype=np.float32)
 
     for (i, target_label0) in enumerate(labels0_overlap):
         pix0 = labels0 == target_label0
@@ -61,8 +59,7 @@ def get_jaccard_distance(labels0, labels1, target_label1):
 
     return jaccard_d.min()
 
-
-def get_motion_superpixels(labels0, labels1, jaccard_threshold):
+def get_jaccard_motion_superpixels(labels0, labels1, jaccard_threshold):
     n_labels1 = np.unique(labels1).shape[0]
 
     jaccard_matrix = np.zeros(n_labels1, dtype=np.float32)
@@ -114,6 +111,7 @@ def calculate_background_priors(background_labels):
 
     priors = np.array(priors)
 
+    # return np.array(sizes), np.ones_like(sizes) / n_labels
     return np.array(sizes), (priors/priors.sum())
 
 def calculate_foreground_priors(foreground_labels, t_k, N_f):
@@ -167,6 +165,13 @@ def graph_segmentation_to_object_mask(H, W, labels, grid_segments):
     return obj_mask
 
 def calculate_adjacency_matrix(label_frame):
+    """
+    Given a frame of labels, computes an adjacency matrix A
+    where A_ij = 1 iff label i is adjacent to label j and i ^ symmetric
+
+    otherwise A_ij = 1 iff label i is adjacent to label j and i < j
+    """
+
     H, W = label_frame.shape
 
     n_labels = label_frame.max() + 1
@@ -215,9 +220,12 @@ def calculate_kl_divergence(P, Q, samples):
 def calculate_local_similarity(model_tau, PHI, n_samples=100):
     tau_samples = model_tau.sample(n_samples)[0]
 
+    P_x = model_tau.score_samples(tau_samples)
+    P_x_e = np.exp(P_x)
+
     kl_divergences = np.array([
-        calculate_kl_divergence(model_tau, phi, tau_samples) for phi in PHI
-        ])
+        (P_x_e * (P_x - phi.score_samples(tau_samples))).sum() for phi in PHI
+    ])
 
     # print(kl_divergences)
 
@@ -238,7 +246,7 @@ def create_adjacency_edges(frame, label_frame, graph, f_mogs, b_mogs, n_samples=
 
         union_pixels = frame[union_x, union_y, :]
 
-        model_tau = GaussianMixture(n_components=3, init_params='random').fit(union_pixels)
+        model_tau = GaussianMixture(n_components=1, init_params='random').fit(union_pixels)
 
         adjacency_models.append((label0,label1,model_tau))
 
