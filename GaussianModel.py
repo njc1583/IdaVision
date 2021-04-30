@@ -3,9 +3,8 @@ import numpy as np
 from sklearn.mixture import GaussianMixture
 
 class GaussianModel:
-    def __init__(self, data, n_components, background):
+    def __init__(self, data, n_components):
         self.data = data
-        self.background = background
         
         self.model = GaussianMixture(n_components=n_components).fit(self.data)
 
@@ -18,4 +17,5 @@ class GaussianModel:
     def calculatePriorForeground(self, t_k, N_f):
         return 1 / (t_k + N_f)
 
-                        
+    def score_samples(self, X):
+        return self.model.score_samples(X)
