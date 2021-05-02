@@ -9,7 +9,7 @@ from sklearn.mixture import GaussianMixture
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
-from VidFrame_utils import *
+from frame_utils import *
 
 import numpy as np
 
@@ -130,8 +130,6 @@ class VidFrame():
 
         initial_motion_superpixel_labels = get_jaccard_motion_superpixels(prev_VidFrame.label_frame, self.label_frame, jaccard_threshold)
         
-        # print(f'initial_motion_superpixel_labels: {initial_motion_superpixel_labels}')
-
         motion_superpixel_adjacency = self.calculateLabeledAdjacency(initial_motion_superpixel_labels)
 
         graph = csr_matrix(motion_superpixel_adjacency)
@@ -309,10 +307,38 @@ class VidFrame():
 
 
     def createObjectSegmentation(self):
+        if self.N_foreground_regions == 0:
+            self.N_objects = 0
+            
+            H, W, C = self.vid_frame.shape
+
+            self.object_mask = np.zeros((H, W))
+            self.object_labels = self.object_mask - 1
+
+            return 0,self.object_mask
+
         maxflow_val = self.maxflow_graph.maxflow()
 
         maxflow_segmentation = self.maxflow_graph.get_grid_segments(self.nodeids)
 
         self.object_mask = self.createObjectSegmentationMask(maxflow_segmentation)
 
+        self.N_objects, self.object_labels = get_num_foreground_regions(self.object_mask)
+
         return maxflow_val,self.object_mask
+
+
+    def getBackgroundPixels(self):
+        c_x, c_y = np.where(self.object_mask == 0)
+
+        return self.vid_frame[c_x, c_y]
+
+    def getForegroundPixels(self):
+
+        foreground_pixels = []
+
+        for i in range(self.N_objects):
+            c_x, c_y = np.where(self.object_labels == i)
+            foreground_pixels.append(self.vid_frame[c_x, c_y])
+
+        return foreground_pixels

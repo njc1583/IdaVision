@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import ffmpeg
 
-from VidFrame_utils import slic_segment_image
+from frame_utils import slic_segment_image
 
 def load_video(filename, H=None, W=None):
     cap = cv2.VideoCapture(filename)

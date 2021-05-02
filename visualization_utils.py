@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from VidFrame_utils import *
+from frame_utils import *
 from VidFrame import *
 
 def view_vidframe_segmentations(vid_frame, N_background_segments, background_compactness):

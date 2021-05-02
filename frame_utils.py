@@ -1,3 +1,4 @@
+from GaussianModel import GaussianModel
 import numpy as np
 
 import cv2
@@ -12,8 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import cv2
-
-from tqdm.notebook import tqdm
 
 
 def slic_segment_image(img, n_segments=500, compactness=1, mask=None):
@@ -77,12 +76,9 @@ def calculate_background_priors(backgorund_models):
 
     return priors / priors.sum()
 
-def calculate_foreground_priors(t_k, N_f):
-    if type(t_k) != type(np.array):
-        t_k = np.ones(N_f) * t_k
-
-    priors = 1 / (t_k + N_f)
-
+def calculate_foreground_priors(foreground_models, N_f):
+    priors = np.array([model.calculatePriorForeground(N_f) for model in foreground_models])
+    
     return priors/priors.sum()
 
 def calculate_kl_divergence(P, Q, samples):
@@ -92,6 +88,48 @@ def calculate_kl_divergence(P, Q, samples):
     KL = np.exp(P_x) * (P_x - Q_x)
 
     return KL.sum()
+
+def update_background_models(vid_frame, models):
+    model_priors = [m.calculatePriorBackground() for m in models]
+
+    background_pixels = vid_frame.getBackgroundPixels()
+
+    model_scores = np.zeros((background_pixels.shape[0], len(models)))
+
+    for i in range(len(models)):
+        model_scores[:,i] = np.log(model_priors[i]) + models[i].score_samples(background_pixels)
+
+    best_models = model_scores.argmax(axis=1)
+
+    for i in range(len(models)):
+        models[i].updateModel(background_pixels[best_models == i])
+
+def update_foreground_models(vid_frame, models, kl_threshold, object_match_threshold):
+    foreground_pixels = vid_frame.getForegroundPixels()
+
+    for model in models:
+        model.incrementLastMatch()
+
+    Taus = [GaussianModel(fp, 3) for fp in foreground_pixels]
+
+    for k,tau in enumerate(Taus):
+        KL_divergences = np.zeros(len(models))
+
+        for i in range(len(models)):
+            samples = models[i].sample(100)[0]
+
+            KL_divergences[i] = calculate_kl_divergence(models[i], tau, samples)
+            
+        min_KL, min_KL_idx = KL_divergences.min(), KL_divergences.argmin()
+
+        if min_KL < kl_threshold:
+            models[min_KL_idx].updateModel(foreground_pixels[k])
+        else:
+            new_model = GaussianModel(foreground_pixels[k], 3)
+            models.append(new_model)
+
+    models = list(filter(lambda m: m.last_match < object_match_threshold, models))
+
 
 def calculate_local_similarity(model_tau, PHI, n_samples=100):
     tau_samples = model_tau.sample(n_samples)[0]
