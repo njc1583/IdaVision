@@ -34,7 +34,10 @@ def view_vidframe_segmentations(vid_frame, N_background_segments, background_com
     plt.show()
 
 def visualize_images(images, nrows, ncols):
-    N, H, W, C = images.shape
+    if len(images.shape) == 4: 
+        N, H, W, C = images.shape
+    else:
+        N, H, W = images.shape
 
     assert N == nrows * ncols
 

@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import ffmpeg
 
-from frame_utils import slic_segment_image
+from frame_utils import get_boundary_segments, slic_segment_image
 
 def load_video(filename, H=None, W=None):
     cap = cv2.VideoCapture(filename)
@@ -27,7 +27,6 @@ def load_video(filename, H=None, W=None):
     return frames
 
 
-# Code borrowed from MP5
 def vidwrite_from_numpy(fn, images, framerate=30, vcodec='libx264'):
     ''' 
       Writes a file from a numpy array of size nimages x height x width x RGB
@@ -35,7 +34,12 @@ def vidwrite_from_numpy(fn, images, framerate=30, vcodec='libx264'):
     '''
     if not isinstance(images, np.ndarray):
         images = np.asarray(images)
-    n, height, width, channels = images.shape
+
+    if len(images.shape) == 4:
+        n, height, width, channels = images.shape
+    else:
+        n, height, width = images.shape
+        
     process = (
         ffmpeg
         .input('pipe:', format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(width, height))
@@ -53,14 +57,22 @@ def vidwrite_from_numpy(fn, images, framerate=30, vcodec='libx264'):
     process.wait()
 
 
-def preprocess_video(vid_frames, tqdm, n_segments=500, compactness=10):
+def segment_video(vid_frames, tqdm, n_segments=500, compactness=10):
     F, H, W, C = vid_frames.shape
 
     labels = np.zeros((F, H, W), dtype=np.uint32)
 
     for f in tqdm(range(F)):
-        l = slic_segment_image(vid_frames[f], n_segments, compactness)
-
-        labels[f] = l
+        labels[f] = slic_segment_image(vid_frames[f], n_segments, compactness)
 
     return labels
+
+def mark_video_segments(vid_frames, label_frames, tqdm):
+    F, H, W, C = vid_frames.shape
+
+    segment_video = np.zeros((F, H, W, C), dtype=np.uint8)
+
+    for f in tqdm(range(F)):
+        segment_video[f] = get_boundary_segments(vid_frames[f], label_frames[f], color=(1, 1, 0)) 
+
+    return segment_video

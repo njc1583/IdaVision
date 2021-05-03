@@ -25,8 +25,8 @@ def slic_segment_image(img, n_segments=500, compactness=1, mask=None):
 
     return labels
 
-def get_boundary_segments(img, labels):
-    return img_as_ubyte(mark_boundaries(img, labels))
+def get_boundary_segments(img, labels, color=(1, 1, 0)):
+    return img_as_ubyte(mark_boundaries(img, labels, color=color))
 
 def get_jaccard_distance(labels0, labels1, target_label1):
     """

@@ -18,8 +18,17 @@ import cv2
 from GaussianModel import *
 
 class VidFrame():
-    def __init__(self, vid_frame, label_frame, memory_save_mode=False):
-        self.memory_save_mode = memory_save_mode # If True, no values will be re-computed
+    def __init__(self, vid_frame: np.ndarray, label_frame: np.ndarray, memory_save_mode:bool=False):
+        """
+        A VidFrame object
+
+        @param vid_frame: the unprocessed video frame
+        @param label_frame: the result of running slic on vid_frame
+        @param memory_save_mode: if True, the instance of VidFrame will
+            recalculate values only when absolutely necessary 
+        """
+
+        self.memory_save_mode = memory_save_mode
 
         self.vid_frame = vid_frame
         self.label_frame = label_frame
@@ -29,9 +38,19 @@ class VidFrame():
         self.adjacency = self.calculateAdjacencyMatrix()
 
     def getSegmentedImage(self):
+        """
+        Returns a VidFrame's video frame by the frame labels
+        """
         return img_as_ubyte(mark_boundaries(self.vid_frame, self.label_frame))
 
     def colorMotionSuperpixels(self):
+        """
+        Returns an image where motion superpixels are filled with the 
+            color green
+        """
+        if not hasattr(self, 'motion_superpixel_labels'):
+            return None
+
         boundary_img = self.getSegmentedImage()
 
         motion_superpix_img = np.copy(boundary_img)
@@ -114,7 +133,7 @@ class VidFrame():
 
         return self.motion_superpixel_adjacency
 
-    def calculateMotionSuperpixels(self, prev_VidFrame, jaccard_threshold):
+    def calculateMotionSuperpixels(self, prev_VidFrame, jaccard_threshold: float):
         """
         Calculates the motion superpixels based on the previous labeled image, and
         the jaccard threshold
@@ -174,7 +193,7 @@ class VidFrame():
 
         return self.motion_superpixel_foreground_mask, self.motion_superpixel_background_mask
 
-    def calculateBackgroundLabels(self, N_background_segments, background_compactness):
+    def calculateBackgroundLabels(self, N_background_segments: int, background_compactness: int):
         """
         Computes further superpixels for superpixels already labeled
         as background, making them ready for statistical modeling
@@ -210,7 +229,10 @@ class VidFrame():
 
         return self.N_foreground_regions, self.foreground_labels
 
-    def generateGaussians(self, n_components=3):
+    def generateGaussians(self, n_components:int=3):
+        if not hasattr(self, 'N_background_labels') or not hasattr(self, 'background_superpixels') or not hasattr(self, 'N_foreground_regions') or not hasattr(self, 'foreground_labels'):
+            return None, None, None, None
+
         backgorund_mogs = []
         foreground_mogs = []
 
@@ -235,6 +257,9 @@ class VidFrame():
         return backgorund_mogs, foreground_mogs, len(backgorund_mogs), len(foreground_mogs)
 
     def calculateUnaryPotential(self, models, priors):
+        if not hasattr(self, 'N_superpixels'):
+            return None
+
         unary_potential_vals = np.zeros(self.N_superpixels)
 
         for s_idx in range(self.N_superpixels):
@@ -270,6 +295,9 @@ class VidFrame():
         return adjacency_models
 
     def createMaxflowGraph(self, b_models, b_priors, f_models, f_priors, n_samples=500):
+        if not hasattr(self, 'N_superpixels'):
+            return
+
         graph = maxflow.Graph[float]()
 
         self.nodeids = graph.add_grid_nodes(self.N_superpixels)
@@ -294,7 +322,7 @@ class VidFrame():
     def createObjectSegmentationMask(self, grid_segments):
         H, W = self.vid_frame.shape[:2]
 
-        obj_mask = np.zeros((H, W))
+        obj_mask = np.zeros((H, W), dtype=np.uint8)
 
         g_x = np.where(grid_segments == True)
         isin = np.isin(self.label_frame, g_x)
@@ -307,12 +335,15 @@ class VidFrame():
 
 
     def createObjectSegmentation(self):
+        if not hasattr(self, 'N_foreground_regions'):
+            return -1,None
+
         if self.N_foreground_regions == 0:
             self.N_objects = 0
             
             H, W, C = self.vid_frame.shape
 
-            self.object_mask = np.zeros((H, W))
+            self.object_mask = np.zeros((H, W), np.uint8)
             self.object_labels = self.object_mask - 1
 
             return 0,self.object_mask
