@@ -90,8 +90,6 @@ if __name__ == '__main__':
 
     processing_jobs = get_processing_jobs(start_frame, end_frame, T_init)
 
-    print(processing_jobs)
-
     print('Generating object segmentation masks...')
 
     obj_seg_fname_format = output_foldername + '/segmentation_%06d_%06d.npy'
