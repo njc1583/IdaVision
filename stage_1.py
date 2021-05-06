@@ -8,17 +8,18 @@ from io_utils import *
 
 from tqdm import tqdm 
 
+from os.path import join as pjoin
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--video_filename', '-vf', type=str, required=True)
+    parser.add_argument('--video_filename', '-vf', type=str, required=True, help='The filename of the original video')
     
-    parser.add_argument('--N_clusters', '-Nc', type=int, default=N_CLUSTERS)
-    parser.add_argument('--compactness', '-c', type=float, default=COMPACTNESS)
+    parser.add_argument('--N_clusters', '-Nc', type=int, default=N_CLUSTERS_DEFAULT, help='The number of clusters for superpixel segmentation')
+    parser.add_argument('--compactness', '-c', type=float, default=COMPACTNESS_DEFAULT, help='Compactness of superpixels')
     
-    parser.add_argument('--H', '-H', type=int, default=H_DEFAULT)
-    parser.add_argument('--W', '-W', type=int, default=W_DEFAULT)
+    parser.add_argument('--H', '-H', type=int, default=H_DEFAULT, help='Height of video to process')
+    parser.add_argument('--W', '-W', type=int, default=W_DEFAULT, help='Width of video to process')
 
     args = parser.parse_args()
 
@@ -30,7 +31,7 @@ if __name__ == '__main__':
     make_directory(OUTPUT_DIR)
 
     output_foldername = get_output_prefix(args['video_filename'])
-    output_foldername = f'{OUTPUT_DIR}/{output_foldername}'
+    output_foldername = pjoin(OUTPUT_DIR, output_foldername)
 
     make_directory(output_foldername)
 
@@ -53,12 +54,13 @@ if __name__ == '__main__':
     print('Marking segment boundaries...')
 
     try:
-        segment_video = mark_video_segments(vid_frames, label_frames, tqdm)
+        segmented_video = mark_video_segments(vid_frames, label_frames, tqdm)
     except Exception as e:
         print(e)
         exit()
 
     print('Saving information...')
 
-    np.save(f'{output_foldername}/label_frames.npy', label_frames)
-    vidwrite_from_numpy(f'{output_foldername}/segment.mp4', segment_video)
+    np.save(pjoin(output_foldername, 'label_frames.npy'), label_frames)
+    np.save(pjoin(output_foldername, 'segment.npy'), segmented_video)
+    vidwrite_from_numpy(pjoin(output_foldername, 'segment.mp4'), segmented_video)
