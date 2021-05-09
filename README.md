@@ -28,3 +28,7 @@ As a specific example, say you process frames `0, 100` with `T_init = 10`. The f
 Run `python stage_3.py --help` for more information about arguments. The only required argument is `video_filename`: which is a local path to the video to process. 
 
 This stage will take all the `.npy` files saved from the previous stage and coalesce them together. In `output/video_filename` you will find two new files: `object_segmentation.mp4`, a video of the object segmented by a green boundary marker, and `coalesce.mp4`, which contains the original video, the segmented superpixels, labeled motion superpixels, and the object segmentation. 
+
+## Data
+
+Data is available at a UofI [DropBox](https://uofi.box.com/s/v2n5d1ex7rmvxkpfo373gmq7vqgvayal).
